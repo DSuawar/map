@@ -28,12 +28,24 @@
             background: #e2e8f0;
         }
 
-        /* Bottom sheet drawer for mobile devices */
-        .bottom-sheet {
-            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), height 0.3s ease;
+        /* Bottom sheet drawer for mobile devices ONLY */
+        @media (max-width: 767px) {
+            .bottom-sheet {
+                transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), height 0.3s ease;
+            }
+            .bottom-sheet.collapsed {
+                transform: translateY(calc(100% - 58px)) !important;
+            }
         }
-        .bottom-sheet.collapsed {
-            transform: translateY(calc(100% - 62px));
+
+        @media (min-width: 768px) {
+            .bottom-sheet {
+                transform: none !important;
+                transition: none !important;
+            }
+            .bottom-sheet.collapsed {
+                transform: none !important;
+            }
         }
 
         /* Фіксовані маркери з точним голковим анкером (без зсуву та плавання) */
@@ -140,7 +152,7 @@
         }
     </style>
 </head>
-<body class="bg-slate-900 flex flex-col h-[100dvh] overflow-hidden select-none">
+<body class="bg-slate-900 flex flex-col h-[100dvh] overflow-hidden">
 
     <!-- Top App Header with Integrated Mode Switcher -->
     <header class="bg-slate-900 border-b border-slate-800 text-white z-30 shrink-0 shadow-md">
@@ -187,7 +199,7 @@
     <!-- Main Workspace -->
     <main class="flex-1 relative overflow-hidden flex flex-col md:flex-row">
         <!-- Map Canvas -->
-        <section class="absolute inset-0 md:relative md:flex-1 h-full w-full">
+        <section class="absolute inset-0 md:relative md:flex-1 h-full w-full min-w-0">
             <div id="map"></div>
 
             <!-- Recenter View floating action button -->
@@ -209,7 +221,7 @@
                     <span class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                         <i class="fa-solid fa-list text-blue-400 text-xs"></i> Список адрес
                     </span>
-                    <button class="md:hidden text-[11px] text-slate-400 flex items-center gap-1 font-medium bg-slate-800 px-2 py-0.5 rounded">
+                    <button type="button" class="md:hidden text-[11px] text-slate-400 flex items-center gap-1 font-medium bg-slate-800 px-2 py-0.5 rounded">
                         <span id="drawer-label">Показати список</span>
                         <i id="drawer-icon" class="fa-solid fa-chevron-up text-[9px] transition-transform"></i>
                     </button>
@@ -360,6 +372,34 @@
         const listContainer = document.getElementById('location-list');
         const activeCountLabel = document.getElementById('active-count-label');
 
+        // Функція для плавного переходу до точки та відкриття спливаючого вікна
+        function selectLocation(loc, marker, itemElement) {
+            // Підсвітка вибраного елемента у списку
+            document.querySelectorAll('.location-card').forEach(el => {
+                el.classList.remove('ring-2', 'ring-blue-500', 'bg-slate-700/80', 'border-blue-500/50');
+            });
+            if (itemElement) {
+                itemElement.classList.add('ring-2', 'ring-blue-500', 'bg-slate-700/80', 'border-blue-500/50');
+                itemElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+
+            // Плавний політ до координат
+            map.flyTo([loc.lat, loc.lon], 16, { duration: 0.8 });
+
+            // Надійне відкриття Popup після завершення або таймауту польоту
+            const onEnd = () => {
+                marker.openPopup();
+                map.off('moveend', onEnd);
+            };
+            map.once('moveend', onEnd);
+            setTimeout(() => marker.openPopup(), 850);
+
+            // На мобільних пристроях ховаємо шторку після вибору, щоб бачити карту
+            if (window.innerWidth < 768) {
+                setDrawerState(false);
+            }
+        }
+
         function render() {
             markersLayer.clearLayers();
             listContainer.innerHTML = '';
@@ -411,9 +451,11 @@
 
                 markersLayer.addLayer(marker);
 
-                // Додавання до бічного списку
+                // Додавання до бічного списку як клікабельного елемента
                 const item = document.createElement('li');
-                item.className = 'p-2.5 rounded-xl border border-slate-800 bg-slate-800/60 hover:bg-slate-800 transition cursor-pointer flex items-center gap-3';
+                item.setAttribute('role', 'button');
+                item.setAttribute('tabindex', '0');
+                item.className = 'location-card p-2.5 rounded-xl border border-slate-800 bg-slate-800/60 hover:bg-slate-800 active:scale-[0.98] transition cursor-pointer flex items-center gap-3 select-none';
                 
                 let iconBg = 'bg-blue-600/30 text-blue-400';
                 let iconClass = loc.type === 'gas' ? 'fa-gas-pump' : 'fa-server';
@@ -429,29 +471,41 @@
                 }
 
                 item.innerHTML = `
-                    <div class="w-8 h-8 rounded-lg ${iconBg} flex items-center justify-center shrink-0 relative">
+                    <div class="w-8 h-8 rounded-lg ${iconBg} flex items-center justify-center shrink-0 relative pointer-events-none">
                         <i class="fa-solid ${iconClass} text-xs"></i>
                         ${loc.burned ? '<span class="absolute -top-1 -right-1 text-[10px]">🔥</span>' : ''}
                     </div>
-                    <div class="flex-1 min-w-0">
+                    <div class="flex-1 min-w-0 pointer-events-none">
                         <div class="font-semibold text-xs text-white truncate flex items-center gap-1.5">
                             <span class="truncate">${loc.name}</span>
                             ${loc.burned ? '<span class="text-[10px] text-red-400 font-bold shrink-0">(Згорів)</span>' : ''}
                         </div>
                         <div class="text-[11px] text-slate-400 truncate">${loc.address}</div>
                     </div>
-                    <div class="shrink-0 text-slate-500 text-xs">
+                    <div class="shrink-0 text-slate-500 text-xs pointer-events-none">
                         <i class="fa-solid fa-chevron-right"></i>
                     </div>
                 `;
 
-                item.onclick = () => {
-                    map.flyTo([loc.lat, loc.lon], 16, { duration: 1.1 });
-                    setTimeout(() => marker.openPopup(), 1150);
-                    if (window.innerWidth < 768) {
-                        setDrawerState(false);
+                // Обробка кліку та клавіатури
+                item.addEventListener('click', () => {
+                    selectLocation(loc, marker, item);
+                });
+                item.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        selectLocation(loc, marker, item);
                     }
-                };
+                });
+
+                // Синхронізація: якщо клікнули по самому маркеру на карті
+                marker.on('click', () => {
+                    document.querySelectorAll('.location-card').forEach(el => {
+                        el.classList.remove('ring-2', 'ring-blue-500', 'bg-slate-700/80', 'border-blue-500/50');
+                    });
+                    item.classList.add('ring-2', 'ring-blue-500', 'bg-slate-700/80', 'border-blue-500/50');
+                    item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                });
 
                 listContainer.appendChild(item);
             });
